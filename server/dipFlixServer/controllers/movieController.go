@@ -2,18 +2,26 @@ package controllers
 
 import (
 	"context"
+	"errors"
+	"log"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/joho/godotenv"
 	"github.com/khdip/dip-flix/server/dipFlixServer/database"
 	"github.com/khdip/dip-flix/server/dipFlixServer/models"
+	"github.com/tmc/langchaingo/llms"
+	"github.com/tmc/langchaingo/llms/googleai"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 var movieCollection *mongo.Collection = database.OpenCollection("movies")
+var rankingCollection *mongo.Collection = database.OpenCollection("rankings")
 var validate = validator.New()
 
 func GetMovies() gin.HandlerFunc {
@@ -82,4 +90,128 @@ func AddMovie() gin.HandlerFunc {
 
 		c.JSON(http.StatusCreated, result)
 	}
+}
+
+func AdminReviewUpdate() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		movieID := c.Param("imdb_id")
+		if movieID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Movie ID not found"})
+			return
+		}
+
+		var req struct {
+			AdminReview string `json:"admin_review"`
+		}
+		var resp struct {
+			RankingName string `json:"ranking_name"`
+			AdminReview string `json:"admin_review"`
+		}
+
+		if err := c.ShouldBind(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+			return
+		}
+
+		sentiment, rankVal, err := GetReviewRanking(req.AdminReview)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error getting review ranking"})
+			return
+		}
+
+		filter := bson.M{"imdb_id": movieID}
+		update := bson.M{
+			"$set": bson.M{
+				"admin_review": req.AdminReview,
+				"ranking": bson.M{
+					"ranking_value": rankVal,
+					"ranking_name":  sentiment,
+				},
+			},
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+
+		result, err := movieCollection.UpdateOne(ctx, filter, update)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error updating movie"})
+			return
+		}
+		if result.MatchedCount == 0 {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Movie not found"})
+			return
+		}
+
+		resp.RankingName = sentiment
+		resp.AdminReview = req.AdminReview
+		c.JSON(http.StatusOK, resp)
+	}
+}
+
+func GetReviewRanking(adminReview string) (string, int, error) {
+	rankings, err := GetRankings()
+	if err != nil {
+		return "", 0, nil
+	}
+
+	sentimentDelimited := ""
+	for _, ranking := range rankings {
+		if ranking.RankingValue != 999 {
+			sentimentDelimited = sentimentDelimited + ranking.RankingName + ","
+		}
+	}
+
+	sentimentDelimited = strings.Trim(sentimentDelimited, ",")
+
+	err = godotenv.Load(".env")
+	if err != nil {
+		log.Println("Warning: env file not found")
+	}
+
+	geminiKey := os.Getenv("GEMINI_API_KEY")
+	if geminiKey == "" {
+		return "", 0, errors.New("could not read GEMINI_API_KEY")
+	}
+
+	llm, err := googleai.New(context.Background(), googleai.WithAPIKey(geminiKey))
+	if err != nil {
+		return "", 0, err
+	}
+
+	basePromptTemp := os.Getenv("BASE_PROMPT_TEMPLATE")
+	basePrompt := strings.Replace(basePromptTemp, "{rankings}", sentimentDelimited, 1)
+
+	response, err := llms.GenerateFromSinglePrompt(context.Background(), llm, basePrompt+adminReview)
+	if err != nil {
+		return "", 0, err
+	}
+
+	rankVal := 0
+	for _, ranking := range rankings {
+		if ranking.RankingName == response {
+			rankVal = ranking.RankingValue
+			break
+		}
+	}
+
+	return response, rankVal, nil
+}
+
+func GetRankings() ([]models.Ranking, error) {
+	var rankings []models.Ranking
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+	defer cancel()
+
+	cursor, err := rankingCollection.Find(ctx, bson.M{})
+	if err != nil {
+		return nil, err
+	}
+	defer cursor.Close(ctx)
+
+	if err := cursor.All(ctx, &rankings); err != nil {
+		return nil, err
+	}
+
+	return rankings, nil
 }
