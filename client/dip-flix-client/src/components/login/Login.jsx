@@ -3,7 +3,7 @@ import Container from 'react-bootstrap/Container';
 import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';
 import axiosClient from '../../api/axiosConfig';
-import {useNavigate, Link, useLocation} from 'react-router-dom';
+import {useNavigate, Link, useLocation, replace} from 'react-router-dom';
 import useAuth from '../../hook/useAuth';
 
 const Login = () => {
@@ -14,6 +14,7 @@ const Login = () => {
     const [loading, setLoading] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
+    const from = location.state?.from?.pathname || "/";
 
     const handleSubmit = async(e) => {
         e.preventDefault();
@@ -29,7 +30,7 @@ const Login = () => {
             }
             setAuth(response.data);
             localStorage.setItem('user', JSON.stringify(response.data));
-            navigate('/');
+            navigate(from, {replace: true});
         } catch(err) {
             console.error(err);
             setError('Invalid email or password');

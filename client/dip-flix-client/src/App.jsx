@@ -7,6 +7,7 @@ import Login from './components/login/Login';
 import {Route, Routes, useNavigate} from 'react-router-dom';
 import Layout from './components/Layout';
 import RequiredAuth from './components/RequiredAuth';
+import Recommended from './components/recommended/Recommended';
 
 function App() {
   return (
@@ -17,7 +18,7 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/login" element={<Login />} />
         <Route element={<RequiredAuth />}>
-          {/* <Route path="/recommended" element={<Recommended />} /> */}
+          <Route path="/recommended" element={<Recommended />} />
         </Route>
       </Routes>
     </>
