@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -33,6 +34,7 @@ func RegisterUser(client *mongo.Client) gin.HandlerFunc {
 
 		validate := validator.New()
 		if err := validate.Struct(user); err != nil {
+			fmt.Println("11111", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Validation failed", "details": err})
 			return
 		}
