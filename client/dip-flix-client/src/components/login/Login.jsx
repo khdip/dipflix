@@ -4,7 +4,7 @@ import Button from 'react-bootstrap/Button';
 import Form from 'react-bootstrap/Form';
 import axiosClient from '../../api/axiosConfig';
 import {useNavigate, Link, useLocation, replace} from 'react-router-dom';
-import useAuth from '../../hook/useAuth';
+import useAuth from '../../hooks/useAuth';
 
 const Login = () => {
     const {setAuth} = useAuth();

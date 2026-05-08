@@ -1,4 +1,4 @@
-import useAxiosPrivate from "../../hook/useAxiosPrivate";
+import useAxiosPrivate from "../../hooks/useAxiosPrivate";
 import { useEffect, useState } from "react";
 import Movies from '../movies/Movies';
 
