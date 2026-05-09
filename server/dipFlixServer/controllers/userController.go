@@ -112,15 +112,100 @@ func LoginUser(client *mongo.Client) gin.HandlerFunc {
 			return
 		}
 
+		http.SetCookie(c.Writer, &http.Cookie{
+			Name:     "access_token",
+			Value:    token,
+			Path:     "/",
+			MaxAge:   86400,
+			Secure:   true,
+			HttpOnly: true,
+			SameSite: http.SameSiteNoneMode,
+		})
+
+		http.SetCookie(c.Writer, &http.Cookie{
+			Name:     "refresh_token",
+			Value:    refreshToken,
+			Path:     "/",
+			MaxAge:   86400,
+			Secure:   true,
+			HttpOnly: true,
+			SameSite: http.SameSiteNoneMode,
+		})
+
 		c.JSON(http.StatusOK, models.UserResponse{
 			UserID:          foundUser.UserID,
 			FisrtName:       foundUser.FirstName,
 			LastName:        foundUser.LastName,
 			Email:           foundUser.Email,
 			Role:            foundUser.Role,
-			Token:           token,
-			RefreshToken:    refreshToken,
 			FavouriteGenres: foundUser.FavouriteGenres,
 		})
+	}
+}
+
+func LogoutHandler(client *mongo.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Clear the access_token cookie
+
+		var UserLogout struct {
+			UserId string `json:"user_id"`
+		}
+
+		err := c.ShouldBindJSON(&UserLogout)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request payload"})
+			return
+		}
+
+		fmt.Println("User ID from Logout request:", UserLogout.UserId)
+
+		err = utils.UpdateAllTokens(UserLogout.UserId, "", "", client) // Clear tokens in the database
+		// Optionally, you can also remove the user session from the database if needed
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Error logging out"})
+			return
+		}
+		// c.SetCookie(
+		// 	"access_token",
+		// 	"",
+		// 	-1, // MaxAge negative → delete immediately
+		// 	"/",
+		// 	"localhost", // Adjust to your domain
+		// 	true,        // Use true in production with HTTPS
+		// 	true,        // HttpOnly
+		// )
+		http.SetCookie(c.Writer, &http.Cookie{
+			Name:  "access_token",
+			Value: "",
+			Path:  "/",
+			// Domain:   "localhost",
+			MaxAge:   -1,
+			Secure:   true,
+			HttpOnly: true,
+			SameSite: http.SameSiteNoneMode,
+		})
+
+		// // Clear the refresh_token cookie
+		// c.SetCookie(
+		// 	"refresh_token",
+		// 	"",
+		// 	-1,
+		// 	"/",
+		// 	"localhost",
+		// 	true,
+		// 	true,
+		// )
+		http.SetCookie(c.Writer, &http.Cookie{
+			Name:     "refresh_token",
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			Secure:   true,
+			HttpOnly: true,
+			SameSite: http.SameSiteNoneMode,
+		})
+
+		c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 	}
 }
